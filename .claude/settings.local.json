@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(git remote:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "WebFetch(domain:testnet.snowtrace.io)",
+      "Bash(curl -s -X POST https://api.avax-test.network/ext/bc/C/rpc -H \"Content-Type: application/json\" -d '{\"\"\"\"jsonrpc\"\"\"\":\"\"\"\"2.0\"\"\"\",\"\"\"\"id\"\"\"\":1,\"\"\"\"method\"\"\"\":\"\"\"\"eth_getTransactionReceipt\"\"\"\",\"\"\"\"params\"\"\"\":[\"\"\"\"0xe58205972443e1cd12771486a7428412b705a53904df65551dc70f4ce8ca31d2\"\"\"\"]}')",
+      "Bash(python -m json.tool)",
+      "Bash(node -e \"process.stdin.resume\\(\\); let d=''''''''; process.stdin.on\\(''''data'''',c=>d+=c\\); process.stdin.on\\(''''end'''',\\(\\)=>{const r=JSON.parse\\(d\\).result; console.log\\(''''Block:'''', parseInt\\(r.blockNumber,16\\)\\); console.log\\(''''To:'''', r.to\\); console.log\\(''''Status:'''', r.status\\); console.log\\(''''Logs:''''\\); r.logs.forEach\\(\\(l,i\\)=>{console.log\\(''''  Log'''',i,''''{''''\\); console.log\\(''''    address:'''', l.address\\); console.log\\(''''    topics:'''', JSON.stringify\\(l.topics\\)\\); console.log\\(''''    data:'''', l.data.slice\\(0,66\\)+''''...''''\\); console.log\\(''''  }''''\\);}\\)}\\)\")",
+      "Bash(node:*)"
     ]
   }
 }

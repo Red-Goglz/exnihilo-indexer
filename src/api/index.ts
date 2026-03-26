@@ -8,7 +8,7 @@ import {
   userActivity,
   dailyMetrics,
 } from "ponder:schema";
-import { eq, desc, gte, sql } from "ponder";
+import { eq, desc, gte, and, sql } from "ponder";
 
 const app = new Hono();
 app.use("/*", cors());
@@ -237,6 +237,72 @@ app.get("/metrics/daily", async (c) => {
       users: r.uniqueUsers,
     })),
   });
+});
+
+// ── LP APR ───────────────────────────────────────────────────────────────────
+
+app.get("/metrics/apr/:pool", async (c) => {
+  const pool = c.req.param("pool")?.toLowerCase() as `0x${string}`;
+  const now = BigInt(Math.floor(Date.now() / 1000));
+
+  const periods = [
+    { name: "1d", seconds: 86400n, days: 1 },
+    { name: "7d", seconds: 7n * 86400n, days: 7 },
+    { name: "30d", seconds: 30n * 86400n, days: 30 },
+  ] as const;
+
+  const apr: Record<string, any> = {};
+
+  for (const p of periods) {
+    const since = now - p.seconds;
+    const sinceDay = (since / 86400n) * 86400n;
+
+    const dailyRows = await db
+      .select()
+      .from(dailyMetrics)
+      .where(
+        and(eq(dailyMetrics.pool, pool), gte(dailyMetrics.dayTimestamp, sinceDay))
+      );
+
+    const feeRevenue = dailyRows.reduce(
+      (sum, r) => sum + r.lpFees + r.swapFees,
+      0n
+    );
+
+    const snapshots = await db
+      .select({
+        backedAirToken: priceSnapshot.backedAirToken,
+        backedAirUsd: priceSnapshot.backedAirUsd,
+        spotPrice: priceSnapshot.spotPrice,
+      })
+      .from(priceSnapshot)
+      .where(
+        and(eq(priceSnapshot.pool, pool), gte(priceSnapshot.timestamp, since))
+      );
+
+    let tvlSum = 0n;
+    for (const s of snapshots) {
+      const tokenValue = (s.backedAirToken * s.spotPrice) / 10n ** 18n;
+      tvlSum += tokenValue + s.backedAirUsd;
+    }
+
+    const snapshotCount = snapshots.length;
+    const feeRevenueUsd = Number(feeRevenue) / 1e6;
+    const tvlAvgUsd =
+      snapshotCount > 0 ? Number(tvlSum / BigInt(snapshotCount)) / 1e6 : 0;
+
+    const aprPct =
+      tvlAvgUsd > 0 ? (feeRevenueUsd / tvlAvgUsd) * (365 / p.days) * 100 : 0;
+
+    apr[p.name] = {
+      feeRevenue: feeRevenue.toString(),
+      tvlAvg: snapshotCount > 0 ? (tvlSum / BigInt(snapshotCount)).toString() : "0",
+      apr: Math.round(aprPct * 100) / 100,
+      snapshotCount,
+    };
+  }
+
+  return c.json({ pool, ...apr });
 });
 
 // ── Status ───────────────────────────────────────────────────────────────────

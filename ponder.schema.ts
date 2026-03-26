@@ -72,6 +72,8 @@ export const dailyMetrics = onchainTable("daily_metrics", (t) => ({
   dayTimestamp: t.bigint().notNull(),       // start of day (UTC)
   volume: t.bigint().notNull(),
   fees: t.bigint().notNull(),
+  lpFees: t.bigint().notNull(),             // LP share of position fees (3/5)
+  swapFees: t.bigint().notNull(),           // swap fees (all go to LP)
   swapCount: t.integer().notNull(),
   positionCount: t.integer().notNull(),
   uniqueUsers: t.integer().notNull(),

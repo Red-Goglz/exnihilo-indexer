@@ -192,6 +192,8 @@ async function updateDaily(
   fees: bigint,
   swaps: number,
   positions: number,
+  lpFees: bigint = 0n,
+  swapFees: bigint = 0n,
 ) {
   const day = dayTimestamp(timestamp);
 
@@ -204,6 +206,8 @@ async function updateDaily(
       dayTimestamp: day,
       volume,
       fees,
+      lpFees,
+      swapFees,
       swapCount: swaps,
       positionCount: positions,
       uniqueUsers: 1,
@@ -211,9 +215,11 @@ async function updateDaily(
     .onConflictDoUpdate((row: any) => ({
       volume: row.volume + volume,
       fees: row.fees + fees,
+      lpFees: row.lpFees + lpFees,
+      swapFees: row.swapFees + swapFees,
       swapCount: row.swapCount + swaps,
       positionCount: row.positionCount + positions,
-      uniqueUsers: row.uniqueUsers + 1, // approximate — counts events, not distinct
+      uniqueUsers: row.uniqueUsers + 1,
     }));
 
   // Global daily
@@ -225,6 +231,8 @@ async function updateDaily(
       dayTimestamp: day,
       volume,
       fees,
+      lpFees,
+      swapFees,
       swapCount: swaps,
       positionCount: positions,
       uniqueUsers: 1,
@@ -232,6 +240,8 @@ async function updateDaily(
     .onConflictDoUpdate((row: any) => ({
       volume: row.volume + volume,
       fees: row.fees + fees,
+      lpFees: row.lpFees + lpFees,
+      swapFees: row.swapFees + swapFees,
       swapCount: row.swapCount + swaps,
       positionCount: row.positionCount + positions,
       uniqueUsers: row.uniqueUsers + 1,
@@ -243,14 +253,21 @@ async function updateDaily(
 ponder.on("EXNIHILOPool:Swap", async ({ event, context }) => {
   const pool = event.log.address;
   const ts = BigInt(event.block.timestamp);
-  const volume = event.args.amountIn; // USDC amount in
+  const volume = event.args.amountIn;
+
+  const swapFeeBps = await context.client.readContract({
+    abi: exnihiloPoolAbi,
+    address: pool,
+    functionName: "swapFeeBps",
+  });
+  const swapFee = (volume * swapFeeBps) / 10000n;
 
   await snapshotPrices(context, pool, event, "swap");
 
   await updatePoolMetrics(context, pool, ts, { swapVolume: volume, swapCount: 1 });
   await updateProtocolMetrics(context, ts, { swapVolume: volume, swaps: 1 });
   await trackUser(context, event.args.caller, ts, { swapCount: 1, volume });
-  await updateDaily(context, pool, ts, volume, 0n, 1, 0);
+  await updateDaily(context, pool, ts, volume, 0n, 1, 0, 0n, swapFee);
 });
 
 ponder.on("EXNIHILOPool:LongOpened", async ({ event, context }) => {
@@ -270,7 +287,7 @@ ponder.on("EXNIHILOPool:LongOpened", async ({ event, context }) => {
     positionVolume: volume, fees: totalFee, lpFees: lpFee, protocolFees: protocolFee, positions: 1,
   });
   await trackUser(context, event.args.holder, ts, { longCount: 1, volume, feesPaid: totalFee });
-  await updateDaily(context, pool, ts, volume, totalFee, 0, 1);
+  await updateDaily(context, pool, ts, volume, totalFee, 0, 1, lpFee, 0n);
 });
 
 ponder.on("EXNIHILOPool:ShortOpened", async ({ event, context }) => {
@@ -290,7 +307,7 @@ ponder.on("EXNIHILOPool:ShortOpened", async ({ event, context }) => {
     positionVolume: volume, fees: totalFee, lpFees: lpFee, protocolFees: protocolFee, positions: 1,
   });
   await trackUser(context, event.args.holder, ts, { shortCount: 1, volume, feesPaid: totalFee });
-  await updateDaily(context, pool, ts, volume, totalFee, 0, 1);
+  await updateDaily(context, pool, ts, volume, totalFee, 0, 1, lpFee, 0n);
 });
 
 ponder.on("EXNIHILOPool:LongClosed", async ({ event, context }) => {
