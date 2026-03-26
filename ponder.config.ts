@@ -3,7 +3,7 @@ import { http, parseAbiItem } from "viem";
 import { exnihiloPoolAbi } from "./EXNIHILOPool.js";
 
 const FACTORY_ADDRESS = "0xff1A130a559EF125a7cab3665951adFA288D87Fd" as const;
-const START_BLOCK = 53_076_564;
+const START_BLOCK = 53_234_479;
 
 export default createConfig({
   networks: {
