@@ -99,24 +99,6 @@ export const exnihiloFactoryAbi = [
         "type": "address"
       },
       {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "usdcAmount",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "tokenAmount",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "lpNftId",
-        "type": "uint256"
-      },
-      {
         "indexed": true,
         "internalType": "address",
         "name": "creator",
@@ -125,13 +107,7 @@ export const exnihiloFactoryAbi = [
       {
         "indexed": false,
         "internalType": "uint256",
-        "name": "maxPositionUsd",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "maxPositionBps",
+        "name": "lpNftId",
         "type": "uint256"
       }
     ],
@@ -196,6 +172,26 @@ export const exnihiloFactoryAbi = [
         "internalType": "uint256",
         "name": "maxPositionBps",
         "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "positionDuration",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "airTokenName",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "airUsdName",
+        "type": "string"
+      },
+      {
+        "internalType": "uint8",
+        "name": "tokenDecimals",
+        "type": "uint8"
       }
     ],
     "name": "createMarket",

@@ -377,3 +377,11 @@ ponder.on("EXNIHILOPool:PositionForceRealized", async ({ event, context }) => {
   await updateProtocolMetrics(context, ts, { closes: 1 });
   await trackUser(context, event.args.lpOwner, ts, {});
 });
+
+ponder.on("EXNIHILOPool:PoolClosed", async ({ event, context }) => {
+  const pool = event.log.address;
+  const ts = BigInt(event.block.timestamp);
+
+  await snapshotPrices(context, pool, event, "poolClosed");
+  await trackUser(context, event.args.closedBy, ts, {});
+});

@@ -2,8 +2,8 @@ import { createConfig, factory } from "ponder";
 import { http, parseAbiItem } from "viem";
 import { exnihiloPoolAbi } from "./EXNIHILOPool.js";
 
-const FACTORY_ADDRESS = "0xff1A130a559EF125a7cab3665951adFA288D87Fd" as const;
-const START_BLOCK = 53_234_479;
+const FACTORY_ADDRESS = "0xDba4FCd283365Ecc773017c6EECbfd7525424211" as const;
+const START_BLOCK = 53_595_718;
 
 export default createConfig({
   networks: {
@@ -19,7 +19,7 @@ export default createConfig({
       address: factory({
         address: FACTORY_ADDRESS,
         event: parseAbiItem(
-          "event MarketCreated(address indexed pool, address indexed tokenAddress, uint256 usdcAmount, uint256 tokenAmount, uint256 lpNftId, address indexed creator, uint256 maxPositionUsd, uint256 maxPositionBps)"
+          "event MarketCreated(address indexed pool, address indexed tokenAddress, address indexed creator, uint256 lpNftId)"
         ),
         parameter: "pool",
       }),

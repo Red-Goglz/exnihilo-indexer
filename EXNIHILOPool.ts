@@ -200,6 +200,26 @@ export const exnihiloPoolAbi = [
     "type": "error"
   },
   {
+    "inputs": [],
+    "name": "PoolClosing",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PoolAlreadyClosed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RenewalExceedsCloseDate",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "OnlyLpHolderOrDeployer",
+    "type": "error"
+  },
+  {
     "anonymous": false,
     "inputs": [
       {
@@ -569,6 +589,25 @@ export const exnihiloPoolAbi = [
       }
     ],
     "name": "Swap",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "closedBy",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "closeDate",
+        "type": "uint256"
+      }
+    ],
+    "name": "PoolClosed",
     "type": "event"
   },
   {
@@ -1115,4 +1154,37 @@ export const exnihiloPoolAbi = [
     "stateMutability": "view",
     "type": "function"
   }
+  {
+    "inputs": [],
+    "name": "factory",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "closeDate",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "closePool",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
 ] as const;
