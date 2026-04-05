@@ -1,6 +1,34 @@
 import { onchainTable } from "ponder";
 
-// ── Price snapshots ──────────────────────────────────────────────────────────
+// ── Individual positions ────────────────────────────────────────────────────
+
+export const position = onchainTable("position", (t) => ({
+  nftId: t.bigint().primaryKey(),
+  pool: t.hex().notNull(),
+  holder: t.hex().notNull(),
+  isLong: t.boolean().notNull(),
+  lockedToken: t.hex().notNull(),
+  lockedAmount: t.bigint().notNull(),
+  usdcIn: t.bigint().notNull(),
+  airUsdMinted: t.bigint().notNull(),
+  airTokenMinted: t.bigint().notNull(),
+  feesPaid: t.bigint().notNull(),
+  openedAt: t.bigint().notNull(),
+  deadline: t.bigint().notNull(),
+  status: t.text().notNull(),             // "open" | "closed" | "expired"
+  payout: t.bigint().notNull(),           // 0 while open
+  closedAt: t.bigint().notNull(),         // 0 while open
+}));
+
+// ── LP ownership ────────────────────────────────────────────────────────────
+
+export const lpOwnership = onchainTable("lp_ownership", (t) => ({
+  nftId: t.bigint().primaryKey(),
+  pool: t.hex().notNull(),
+  owner: t.hex().notNull(),
+}));
+
+// ── Price snapshots ─────────────────────────────────────────────────────────
 
 export const priceSnapshot = onchainTable("price_snapshot", (t) => ({
   id: t.text().primaryKey(),
@@ -15,66 +43,60 @@ export const priceSnapshot = onchainTable("price_snapshot", (t) => ({
   eventType: t.text().notNull(),
 }));
 
-// ── Pool metrics ─────────────────────────────────────────────────────────────
+// ── Pool metrics ────────────────────────────────────────────────────────────
 
 export const poolMetrics = onchainTable("pool_metrics", (t) => ({
   address: t.hex().primaryKey(),
-  // Volume (USDC, 6 decimals)
-  swapVolume: t.bigint().notNull(),         // total swap volume
-  positionVolume: t.bigint().notNull(),     // total open long/short volume
-  // Fees (USDC, 6 decimals)
-  totalFees: t.bigint().notNull(),          // total position fees (5%)
-  lpFees: t.bigint().notNull(),             // 3% of notional → LP
-  protocolFees: t.bigint().notNull(),       // 2% of notional → treasury
-  // Counts
-  swapCount: t.integer().notNull(),
+  positionVolume: t.bigint().notNull(),
+  totalFees: t.bigint().notNull(),
+  lpFees: t.bigint().notNull(),
+  protocolFees: t.bigint().notNull(),
   longCount: t.integer().notNull(),
   shortCount: t.integer().notNull(),
   closeCount: t.integer().notNull(),
-  // Timestamps
+  totalPayout: t.bigint().notNull(),
   lastUpdated: t.bigint().notNull(),
 }));
 
-// ── Protocol-wide totals ─────────────────────────────────────────────────────
+// ── Protocol-wide totals ────────────────────────────────────────────────────
 
 export const protocolMetrics = onchainTable("protocol_metrics", (t) => ({
-  id: t.text().primaryKey(),                // always "global"
-  totalSwapVolume: t.bigint().notNull(),
+  id: t.text().primaryKey(),              // always "global"
   totalPositionVolume: t.bigint().notNull(),
   totalFees: t.bigint().notNull(),
   totalLpFees: t.bigint().notNull(),
   totalProtocolFees: t.bigint().notNull(),
-  totalSwaps: t.integer().notNull(),
   totalPositions: t.integer().notNull(),
   totalCloses: t.integer().notNull(),
+  totalPayout: t.bigint().notNull(),
   poolCount: t.integer().notNull(),
   lastUpdated: t.bigint().notNull(),
 }));
 
-// ── User activity ────────────────────────────────────────────────────────────
+// ── User activity ───────────────────────────────────────────────────────────
 
 export const userActivity = onchainTable("user_activity", (t) => ({
   address: t.hex().primaryKey(),
-  firstSeen: t.bigint().notNull(),          // timestamp of first interaction
-  lastSeen: t.bigint().notNull(),           // timestamp of last interaction
-  swapCount: t.integer().notNull(),
+  firstSeen: t.bigint().notNull(),
+  lastSeen: t.bigint().notNull(),
   longCount: t.integer().notNull(),
   shortCount: t.integer().notNull(),
-  totalVolume: t.bigint().notNull(),        // total USDC volume
-  totalFeesPaid: t.bigint().notNull(),      // total fees paid
+  closeCount: t.integer().notNull(),
+  totalVolume: t.bigint().notNull(),
+  totalFeesPaid: t.bigint().notNull(),
+  totalPayout: t.bigint().notNull(),
 }));
 
-// ── Daily snapshots (for time-series analytics) ──────────────────────────────
+// ── Daily snapshots ─────────────────────────────────────────────────────────
 
 export const dailyMetrics = onchainTable("daily_metrics", (t) => ({
-  id: t.text().primaryKey(),                // "{pool}-{dayTimestamp}" or "global-{dayTimestamp}"
-  pool: t.hex().notNull(),                  // "0x0" for global
-  dayTimestamp: t.bigint().notNull(),       // start of day (UTC)
+  id: t.text().primaryKey(),              // "{pool}-{dayTimestamp}" or "global-{dayTimestamp}"
+  pool: t.hex().notNull(),                // "0x0" for global
+  dayTimestamp: t.bigint().notNull(),
   volume: t.bigint().notNull(),
   fees: t.bigint().notNull(),
-  lpFees: t.bigint().notNull(),             // LP share of position fees (3/5)
-  swapFees: t.bigint().notNull(),           // swap fees (all go to LP)
-  swapCount: t.integer().notNull(),
+  lpFees: t.bigint().notNull(),
   positionCount: t.integer().notNull(),
+  closeCount: t.integer().notNull(),
   uniqueUsers: t.integer().notNull(),
 }));

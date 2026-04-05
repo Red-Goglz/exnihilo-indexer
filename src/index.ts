@@ -1,5 +1,7 @@
 import { ponder } from "ponder:registry";
 import {
+  position,
+  lpOwnership,
   priceSnapshot,
   poolMetrics,
   protocolMetrics,
@@ -7,8 +9,14 @@ import {
   dailyMetrics,
 } from "ponder:schema";
 import { exnihiloPoolAbi } from "../EXNIHILOPool.js";
+import { positionNftAbi } from "../PositionNFT.js";
+import { lpNftAbi } from "../LpNFT.js";
 
-// ── Fee constants (match contract) ───────────────────────────────────────────
+// ── Constants ───────────────────────────────────────────────────────────────
+
+const POSITION_NFT = "0x9B3CE8FAF33ca6AAF998178344482d9d2ec4052E" as const;
+const LP_NFT = "0xF80CC21C7efed26D8f4f3195B70a9c13e74Cab7D" as const;
+
 const PROTOCOL_FEE_BPS = 200n;
 const LP_FEE_BPS = 300n;
 const TOTAL_FEE_BPS = PROTOCOL_FEE_BPS + LP_FEE_BPS; // 500 = 5%
@@ -19,13 +27,13 @@ function dayTimestamp(ts: bigint): bigint {
   return (ts / 86400n) * 86400n;
 }
 
-// ── Snapshot prices ──────────────────────────────────────────────────────────
+// ── Snapshot prices ─────────────────────────────────────────────────────────
 
 async function snapshotPrices(
   context: any,
   poolAddress: `0x${string}`,
   event: any,
-  eventType: string
+  eventType: string,
 ) {
   const [backedAirToken, backedAirUsd, longPriceVal, shortPriceVal] =
     await Promise.all([
@@ -53,112 +61,107 @@ async function snapshotPrices(
   });
 }
 
-// ── Update pool metrics ──────────────────────────────────────────────────────
+// ── Update pool metrics ─────────────────────────────────────────────────────
 
 async function updatePoolMetrics(
   context: any,
   pool: `0x${string}`,
   timestamp: bigint,
   updates: {
-    swapVolume?: bigint;
     positionVolume?: bigint;
     totalFees?: bigint;
     lpFees?: bigint;
     protocolFees?: bigint;
-    swapCount?: number;
     longCount?: number;
     shortCount?: number;
     closeCount?: number;
-  }
+    totalPayout?: bigint;
+  },
 ) {
   await context.db
     .insert(poolMetrics)
     .values({
       address: pool,
-      swapVolume: updates.swapVolume ?? 0n,
       positionVolume: updates.positionVolume ?? 0n,
       totalFees: updates.totalFees ?? 0n,
       lpFees: updates.lpFees ?? 0n,
       protocolFees: updates.protocolFees ?? 0n,
-      swapCount: updates.swapCount ?? 0,
       longCount: updates.longCount ?? 0,
       shortCount: updates.shortCount ?? 0,
       closeCount: updates.closeCount ?? 0,
+      totalPayout: updates.totalPayout ?? 0n,
       lastUpdated: timestamp,
     })
     .onConflictDoUpdate((row: any) => ({
-      swapVolume: row.swapVolume + (updates.swapVolume ?? 0n),
       positionVolume: row.positionVolume + (updates.positionVolume ?? 0n),
       totalFees: row.totalFees + (updates.totalFees ?? 0n),
       lpFees: row.lpFees + (updates.lpFees ?? 0n),
       protocolFees: row.protocolFees + (updates.protocolFees ?? 0n),
-      swapCount: row.swapCount + (updates.swapCount ?? 0),
       longCount: row.longCount + (updates.longCount ?? 0),
       shortCount: row.shortCount + (updates.shortCount ?? 0),
       closeCount: row.closeCount + (updates.closeCount ?? 0),
+      totalPayout: row.totalPayout + (updates.totalPayout ?? 0n),
       lastUpdated: timestamp,
     }));
 }
 
-// ── Update protocol-wide metrics ─────────────────────────────────────────────
+// ── Update protocol metrics ─────────────────────────────────────────────────
 
 async function updateProtocolMetrics(
   context: any,
   timestamp: bigint,
   updates: {
-    swapVolume?: bigint;
     positionVolume?: bigint;
     fees?: bigint;
     lpFees?: bigint;
     protocolFees?: bigint;
-    swaps?: number;
     positions?: number;
     closes?: number;
+    totalPayout?: bigint;
     newPool?: boolean;
-  }
+  },
 ) {
   await context.db
     .insert(protocolMetrics)
     .values({
       id: "global",
-      totalSwapVolume: updates.swapVolume ?? 0n,
       totalPositionVolume: updates.positionVolume ?? 0n,
       totalFees: updates.fees ?? 0n,
       totalLpFees: updates.lpFees ?? 0n,
       totalProtocolFees: updates.protocolFees ?? 0n,
-      totalSwaps: updates.swaps ?? 0,
       totalPositions: updates.positions ?? 0,
       totalCloses: updates.closes ?? 0,
+      totalPayout: updates.totalPayout ?? 0n,
       poolCount: updates.newPool ? 1 : 0,
       lastUpdated: timestamp,
     })
     .onConflictDoUpdate((row: any) => ({
-      totalSwapVolume: row.totalSwapVolume + (updates.swapVolume ?? 0n),
       totalPositionVolume: row.totalPositionVolume + (updates.positionVolume ?? 0n),
       totalFees: row.totalFees + (updates.fees ?? 0n),
       totalLpFees: row.totalLpFees + (updates.lpFees ?? 0n),
       totalProtocolFees: row.totalProtocolFees + (updates.protocolFees ?? 0n),
-      totalSwaps: row.totalSwaps + (updates.swaps ?? 0),
       totalPositions: row.totalPositions + (updates.positions ?? 0),
       totalCloses: row.totalCloses + (updates.closes ?? 0),
+      totalPayout: row.totalPayout + (updates.totalPayout ?? 0n),
       poolCount: row.poolCount + (updates.newPool ? 1 : 0),
       lastUpdated: timestamp,
     }));
 }
 
-// ── Track user activity ──────────────────────────────────────────────────────
+// ── Track user activity ─────────────────────────────────────────────────────
 
 async function trackUser(
   context: any,
   user: `0x${string}`,
   timestamp: bigint,
   updates: {
-    swapCount?: number;
     longCount?: number;
     shortCount?: number;
+    closeCount?: number;
     volume?: bigint;
     feesPaid?: bigint;
-  }
+    totalPayout?: bigint;
+  },
 ) {
   await context.db
     .insert(userActivity)
@@ -166,23 +169,25 @@ async function trackUser(
       address: user,
       firstSeen: timestamp,
       lastSeen: timestamp,
-      swapCount: updates.swapCount ?? 0,
       longCount: updates.longCount ?? 0,
       shortCount: updates.shortCount ?? 0,
+      closeCount: updates.closeCount ?? 0,
       totalVolume: updates.volume ?? 0n,
       totalFeesPaid: updates.feesPaid ?? 0n,
+      totalPayout: updates.totalPayout ?? 0n,
     })
     .onConflictDoUpdate((row: any) => ({
       lastSeen: timestamp,
-      swapCount: row.swapCount + (updates.swapCount ?? 0),
       longCount: row.longCount + (updates.longCount ?? 0),
       shortCount: row.shortCount + (updates.shortCount ?? 0),
+      closeCount: row.closeCount + (updates.closeCount ?? 0),
       totalVolume: row.totalVolume + (updates.volume ?? 0n),
       totalFeesPaid: row.totalFeesPaid + (updates.feesPaid ?? 0n),
+      totalPayout: row.totalPayout + (updates.totalPayout ?? 0n),
     }));
 }
 
-// ── Update daily metrics ─────────────────────────────────────────────────────
+// ── Update daily metrics ────────────────────────────────────────────────────
 
 async function updateDaily(
   context: any,
@@ -190,10 +195,9 @@ async function updateDaily(
   timestamp: bigint,
   volume: bigint,
   fees: bigint,
-  swaps: number,
   positions: number,
+  closes: number,
   lpFees: bigint = 0n,
-  swapFees: bigint = 0n,
 ) {
   const day = dayTimestamp(timestamp);
 
@@ -207,18 +211,16 @@ async function updateDaily(
       volume,
       fees,
       lpFees,
-      swapFees,
-      swapCount: swaps,
       positionCount: positions,
+      closeCount: closes,
       uniqueUsers: 1,
     })
     .onConflictDoUpdate((row: any) => ({
       volume: row.volume + volume,
       fees: row.fees + fees,
       lpFees: row.lpFees + lpFees,
-      swapFees: row.swapFees + swapFees,
-      swapCount: row.swapCount + swaps,
       positionCount: row.positionCount + positions,
+      closeCount: row.closeCount + closes,
       uniqueUsers: row.uniqueUsers + 1,
     }));
 
@@ -232,151 +234,146 @@ async function updateDaily(
       volume,
       fees,
       lpFees,
-      swapFees,
-      swapCount: swaps,
       positionCount: positions,
+      closeCount: closes,
       uniqueUsers: 1,
     })
     .onConflictDoUpdate((row: any) => ({
       volume: row.volume + volume,
       fees: row.fees + fees,
       lpFees: row.lpFees + lpFees,
-      swapFees: row.swapFees + swapFees,
-      swapCount: row.swapCount + swaps,
       positionCount: row.positionCount + positions,
+      closeCount: row.closeCount + closes,
       uniqueUsers: row.uniqueUsers + 1,
     }));
 }
 
-// ── Event handlers ───────────────────────────────────────────────────────────
+// ── Factory: new market ─────────────────────────────────────────────────────
 
-ponder.on("EXNIHILOPool:Swap", async ({ event, context }) => {
-  const pool = event.log.address;
+ponder.on("EXNIHILOFactory:MarketCreated", async ({ event, context }) => {
   const ts = BigInt(event.block.timestamp);
-  const volume = event.args.amountIn;
+  const { pool, creator, lpNftId } = event.args;
 
-  const swapFeeBps = await context.client.readContract({
-    abi: exnihiloPoolAbi,
-    address: pool,
-    functionName: "swapFeeBps",
+  // Track LP ownership
+  await context.db.insert(lpOwnership).values({
+    nftId: lpNftId,
+    pool,
+    owner: creator,
   });
-  const swapFee = (volume * swapFeeBps) / 10000n;
 
-  await snapshotPrices(context, pool, event, "swap");
-
-  await updatePoolMetrics(context, pool, ts, { swapVolume: volume, swapCount: 1 });
-  await updateProtocolMetrics(context, ts, { swapVolume: volume, swaps: 1 });
-  await trackUser(context, event.args.caller, ts, { swapCount: 1, volume });
-  await updateDaily(context, pool, ts, volume, 0n, 1, 0, 0n, swapFee);
+  await updateProtocolMetrics(context, ts, { newPool: true });
+  await trackUser(context, creator, ts, {});
 });
 
-ponder.on("EXNIHILOPool:LongOpened", async ({ event, context }) => {
+// ── Pool: position opened ───────────────────────────────────────────────────
+
+ponder.on("EXNIHILOPool:PositionOpened", async ({ event, context }) => {
   const pool = event.log.address;
   const ts = BigInt(event.block.timestamp);
-  const volume = event.args.usdcIn;
-  const totalFee = event.args.feesPaid;
+  const { nftId, holder, isLong } = event.args;
+
+  // Read full position data from the NFT contract
+  const posData = await context.client.readContract({
+    abi: positionNftAbi,
+    address: POSITION_NFT,
+    functionName: "getPosition",
+    args: [nftId],
+  });
+
+  const volume = posData.usdcIn;
+  const totalFee = posData.feesPaid;
   const lpFee = (totalFee * LP_FEE_BPS) / TOTAL_FEE_BPS;
   const protocolFee = totalFee - lpFee;
 
-  await snapshotPrices(context, pool, event, "longOpened");
+  // Store position
+  await context.db.insert(position).values({
+    nftId,
+    pool,
+    holder,
+    isLong,
+    lockedToken: posData.lockedToken,
+    lockedAmount: posData.lockedAmount,
+    usdcIn: posData.usdcIn,
+    airUsdMinted: posData.airUsdMinted,
+    airTokenMinted: posData.airTokenMinted,
+    feesPaid: posData.feesPaid,
+    openedAt: posData.openedAt,
+    deadline: posData.deadline,
+    status: "open",
+    payout: 0n,
+    closedAt: 0n,
+  });
+
+  await snapshotPrices(context, pool, event, "positionOpened");
 
   await updatePoolMetrics(context, pool, ts, {
-    positionVolume: volume, totalFees: totalFee, lpFees: lpFee, protocolFees: protocolFee, longCount: 1,
+    positionVolume: volume,
+    totalFees: totalFee,
+    lpFees: lpFee,
+    protocolFees: protocolFee,
+    longCount: isLong ? 1 : 0,
+    shortCount: isLong ? 0 : 1,
   });
+
   await updateProtocolMetrics(context, ts, {
-    positionVolume: volume, fees: totalFee, lpFees: lpFee, protocolFees: protocolFee, positions: 1,
+    positionVolume: volume,
+    fees: totalFee,
+    lpFees: lpFee,
+    protocolFees: protocolFee,
+    positions: 1,
   });
-  await trackUser(context, event.args.holder, ts, { longCount: 1, volume, feesPaid: totalFee });
-  await updateDaily(context, pool, ts, volume, totalFee, 0, 1, lpFee, 0n);
-});
 
-ponder.on("EXNIHILOPool:ShortOpened", async ({ event, context }) => {
-  const pool = event.log.address;
-  const ts = BigInt(event.block.timestamp);
-  const volume = event.args.airUsdLocked; // USDC equivalent
-  const totalFee = event.args.feesPaid;
-  const lpFee = (totalFee * LP_FEE_BPS) / TOTAL_FEE_BPS;
-  const protocolFee = totalFee - lpFee;
-
-  await snapshotPrices(context, pool, event, "shortOpened");
-
-  await updatePoolMetrics(context, pool, ts, {
-    positionVolume: volume, totalFees: totalFee, lpFees: lpFee, protocolFees: protocolFee, shortCount: 1,
+  await trackUser(context, holder, ts, {
+    longCount: isLong ? 1 : 0,
+    shortCount: isLong ? 0 : 1,
+    volume,
+    feesPaid: totalFee,
   });
-  await updateProtocolMetrics(context, ts, {
-    positionVolume: volume, fees: totalFee, lpFees: lpFee, protocolFees: protocolFee, positions: 1,
+
+  await updateDaily(context, pool, ts, volume, totalFee, 1, 0, lpFee);
+});
+
+// ── Pool: position closed (by holder) ───────────────────────────────────────
+
+ponder.on("EXNIHILOPool:PositionClosed", async ({ event, context }) => {
+  const pool = event.log.address;
+  const ts = BigInt(event.block.timestamp);
+  const { nftId, holder, payout } = event.args;
+
+  await context.db.update(position, { nftId }).set({
+    status: "closed",
+    payout,
+    closedAt: ts,
   });
-  await trackUser(context, event.args.holder, ts, { shortCount: 1, volume, feesPaid: totalFee });
-  await updateDaily(context, pool, ts, volume, totalFee, 0, 1, lpFee, 0n);
+
+  await snapshotPrices(context, pool, event, "positionClosed");
+  await updatePoolMetrics(context, pool, ts, { closeCount: 1, totalPayout: payout });
+  await updateProtocolMetrics(context, ts, { closes: 1, totalPayout: payout });
+  await trackUser(context, holder, ts, { closeCount: 1, totalPayout: payout });
+  await updateDaily(context, pool, ts, 0n, 0n, 0, 1);
 });
 
-ponder.on("EXNIHILOPool:LongClosed", async ({ event, context }) => {
+// ── Pool: position closed after deadline (by anyone) ────────────────────────
+
+ponder.on("EXNIHILOPool:PositionClosedAfterDeadline", async ({ event, context }) => {
   const pool = event.log.address;
   const ts = BigInt(event.block.timestamp);
+  const { nftId, caller, payout } = event.args;
 
-  await snapshotPrices(context, pool, event, "longClosed");
-  await updatePoolMetrics(context, pool, ts, { closeCount: 1 });
-  await updateProtocolMetrics(context, ts, { closes: 1 });
-  await trackUser(context, event.args.holder, ts, {});
+  await context.db.update(position, { nftId }).set({
+    status: "expired",
+    payout,
+    closedAt: ts,
+  });
+
+  await snapshotPrices(context, pool, event, "positionExpired");
+  await updatePoolMetrics(context, pool, ts, { closeCount: 1, totalPayout: payout });
+  await updateProtocolMetrics(context, ts, { closes: 1, totalPayout: payout });
+  await trackUser(context, caller, ts, { closeCount: 1, totalPayout: payout });
+  await updateDaily(context, pool, ts, 0n, 0n, 0, 1);
 });
 
-ponder.on("EXNIHILOPool:ShortClosed", async ({ event, context }) => {
-  const pool = event.log.address;
-  const ts = BigInt(event.block.timestamp);
-
-  await snapshotPrices(context, pool, event, "shortClosed");
-  await updatePoolMetrics(context, pool, ts, { closeCount: 1 });
-  await updateProtocolMetrics(context, ts, { closes: 1 });
-  await trackUser(context, event.args.holder, ts, {});
-});
-
-ponder.on("EXNIHILOPool:LiquidityAdded", async ({ event, context }) => {
-  const pool = event.log.address;
-  const ts = BigInt(event.block.timestamp);
-
-  await snapshotPrices(context, pool, event, "liquidityAdded");
-  await updatePoolMetrics(context, pool, ts, {});
-  await updateProtocolMetrics(context, ts, { newPool: true }); // first liquidity = new pool
-  await trackUser(context, event.args.provider, ts, {});
-});
-
-ponder.on("EXNIHILOPool:LiquidityRemoved", async ({ event, context }) => {
-  const pool = event.log.address;
-  const ts = BigInt(event.block.timestamp);
-
-  await snapshotPrices(context, pool, event, "liquidityRemoved");
-  await trackUser(context, event.args.provider, ts, {});
-});
-
-ponder.on("EXNIHILOPool:LongRealized", async ({ event, context }) => {
-  const pool = event.log.address;
-  const ts = BigInt(event.block.timestamp);
-
-  await snapshotPrices(context, pool, event, "longRealized");
-  await updatePoolMetrics(context, pool, ts, { closeCount: 1 });
-  await updateProtocolMetrics(context, ts, { closes: 1 });
-  await trackUser(context, event.args.holder, ts, {});
-});
-
-ponder.on("EXNIHILOPool:ShortRealized", async ({ event, context }) => {
-  const pool = event.log.address;
-  const ts = BigInt(event.block.timestamp);
-
-  await snapshotPrices(context, pool, event, "shortRealized");
-  await updatePoolMetrics(context, pool, ts, { closeCount: 1 });
-  await updateProtocolMetrics(context, ts, { closes: 1 });
-  await trackUser(context, event.args.holder, ts, {});
-});
-
-ponder.on("EXNIHILOPool:PositionForceRealized", async ({ event, context }) => {
-  const pool = event.log.address;
-  const ts = BigInt(event.block.timestamp);
-
-  await snapshotPrices(context, pool, event, "forceRealized");
-  await updatePoolMetrics(context, pool, ts, { closeCount: 1 });
-  await updateProtocolMetrics(context, ts, { closes: 1 });
-  await trackUser(context, event.args.lpOwner, ts, {});
-});
+// ── Pool: pool closed ───────────────────────────────────────────────────────
 
 ponder.on("EXNIHILOPool:PoolClosed", async ({ event, context }) => {
   const pool = event.log.address;
@@ -384,4 +381,39 @@ ponder.on("EXNIHILOPool:PoolClosed", async ({ event, context }) => {
 
   await snapshotPrices(context, pool, event, "poolClosed");
   await trackUser(context, event.args.closedBy, ts, {});
+});
+
+// ── PositionNFT: transfers (ownership changes only) ─────────────────────────
+
+ponder.on("PositionNFT:Transfer", async ({ event, context }) => {
+  const { from, to, tokenId } = event.args;
+
+  // Skip mints (handled by PositionOpened) and burns (handled by PositionClosed)
+  if (from === ZERO_ADDR || to === ZERO_ADDR) return;
+
+  await context.db.update(position, { nftId: tokenId }).set({
+    holder: to,
+  });
+});
+
+// ── LpNFT: transfers (ownership changes only) ──────────────────────────────
+
+ponder.on("LpNFT:Transfer", async ({ event, context }) => {
+  const { from, to, tokenId } = event.args;
+
+  // Skip mints (handled by MarketCreated) and burns
+  if (from === ZERO_ADDR || to === ZERO_ADDR) return;
+
+  // Read pool from contract in case record doesn't exist yet
+  const pool = await context.client.readContract({
+    abi: lpNftAbi,
+    address: LP_NFT,
+    functionName: "poolOf",
+    args: [tokenId],
+  });
+
+  await context.db
+    .insert(lpOwnership)
+    .values({ nftId: tokenId, pool, owner: to })
+    .onConflictDoUpdate(() => ({ owner: to }));
 });

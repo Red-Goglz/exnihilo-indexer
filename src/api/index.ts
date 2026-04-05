@@ -2,20 +2,22 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { db } from "ponder:api";
 import {
+  position,
+  lpOwnership,
   priceSnapshot,
   poolMetrics,
   protocolMetrics,
   userActivity,
   dailyMetrics,
 } from "ponder:schema";
-import { eq, desc, gte, and, sql } from "ponder";
+import { eq, desc, gte, and } from "ponder";
 
 const app = new Hono();
 app.use("/*", cors());
 
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as `0x${string}`;
 
-// ── Price history for a pool ─────────────────────────────────────────────────
+// ── Price history for a pool ────────────────────────────────────────────────
 
 app.get("/prices/:pool", async (c) => {
   const pool = c.req.param("pool")?.toLowerCase() as `0x${string}`;
@@ -43,7 +45,114 @@ app.get("/prices/:pool", async (c) => {
   });
 });
 
-// ── Pool metrics ─────────────────────────────────────────────────────────────
+// ── Positions by pool ───────────────────────────────────────────────────────
+
+app.get("/positions/:pool", async (c) => {
+  const pool = c.req.param("pool")?.toLowerCase() as `0x${string}`;
+  const status = c.req.query("status");
+  const limit = Math.min(Number(c.req.query("limit") ?? 100), 500);
+
+  const rows = await db
+    .select()
+    .from(position)
+    .where(
+      status
+        ? and(eq(position.pool, pool), eq(position.status, status))
+        : eq(position.pool, pool),
+    )
+    .orderBy(desc(position.openedAt))
+    .limit(limit);
+
+  return c.json({
+    pool,
+    count: rows.length,
+    positions: rows.map((r) => ({
+      nftId: r.nftId.toString(),
+      holder: r.holder,
+      isLong: r.isLong,
+      usdcIn: r.usdcIn.toString(),
+      lockedAmount: r.lockedAmount.toString(),
+      feesPaid: r.feesPaid.toString(),
+      openedAt: Number(r.openedAt),
+      deadline: Number(r.deadline),
+      status: r.status,
+      payout: r.payout.toString(),
+      closedAt: Number(r.closedAt),
+    })),
+  });
+});
+
+// ── Single position ─────────────────────────────────────────────────────────
+
+app.get("/position/:nftId", async (c) => {
+  const nftId = BigInt(c.req.param("nftId") ?? "0");
+
+  const rows = await db
+    .select()
+    .from(position)
+    .where(eq(position.nftId, nftId))
+    .limit(1);
+
+  if (rows.length === 0) return c.json({ error: "Position not found" }, 404);
+  const r = rows[0];
+
+  return c.json({
+    nftId: r.nftId.toString(),
+    pool: r.pool,
+    holder: r.holder,
+    isLong: r.isLong,
+    lockedToken: r.lockedToken,
+    lockedAmount: r.lockedAmount.toString(),
+    usdcIn: r.usdcIn.toString(),
+    airUsdMinted: r.airUsdMinted.toString(),
+    airTokenMinted: r.airTokenMinted.toString(),
+    feesPaid: r.feesPaid.toString(),
+    openedAt: Number(r.openedAt),
+    deadline: Number(r.deadline),
+    status: r.status,
+    payout: r.payout.toString(),
+    closedAt: Number(r.closedAt),
+  });
+});
+
+// ── Positions by user ───────────────────────────────────────────────────────
+
+app.get("/positions/user/:address", async (c) => {
+  const addr = c.req.param("address")?.toLowerCase() as `0x${string}`;
+  const status = c.req.query("status");
+  const limit = Math.min(Number(c.req.query("limit") ?? 100), 500);
+
+  const rows = await db
+    .select()
+    .from(position)
+    .where(
+      status
+        ? and(eq(position.holder, addr), eq(position.status, status))
+        : eq(position.holder, addr),
+    )
+    .orderBy(desc(position.openedAt))
+    .limit(limit);
+
+  return c.json({
+    address: addr,
+    count: rows.length,
+    positions: rows.map((r) => ({
+      nftId: r.nftId.toString(),
+      pool: r.pool,
+      isLong: r.isLong,
+      usdcIn: r.usdcIn.toString(),
+      lockedAmount: r.lockedAmount.toString(),
+      feesPaid: r.feesPaid.toString(),
+      openedAt: Number(r.openedAt),
+      deadline: Number(r.deadline),
+      status: r.status,
+      payout: r.payout.toString(),
+      closedAt: Number(r.closedAt),
+    })),
+  });
+});
+
+// ── Pool metrics ────────────────────────────────────────────────────────────
 
 app.get("/metrics/pool/:pool", async (c) => {
   const pool = c.req.param("pool")?.toLowerCase() as `0x${string}`;
@@ -59,20 +168,18 @@ app.get("/metrics/pool/:pool", async (c) => {
 
   return c.json({
     pool: r.address,
-    swapVolume: r.swapVolume.toString(),
     positionVolume: r.positionVolume.toString(),
-    totalVolume: (r.swapVolume + r.positionVolume).toString(),
     totalFees: r.totalFees.toString(),
     lpFees: r.lpFees.toString(),
     protocolFees: r.protocolFees.toString(),
-    swapCount: r.swapCount,
     longCount: r.longCount,
     shortCount: r.shortCount,
     closeCount: r.closeCount,
+    totalPayout: r.totalPayout.toString(),
   });
 });
 
-// ── All pool metrics ─────────────────────────────────────────────────────────
+// ── All pool metrics ────────────────────────────────────────────────────────
 
 app.get("/metrics/pools", async (c) => {
   const rows = await db.select().from(poolMetrics);
@@ -81,21 +188,19 @@ app.get("/metrics/pools", async (c) => {
     count: rows.length,
     pools: rows.map((r) => ({
       pool: r.address,
-      swapVolume: r.swapVolume.toString(),
       positionVolume: r.positionVolume.toString(),
-      totalVolume: (r.swapVolume + r.positionVolume).toString(),
       totalFees: r.totalFees.toString(),
       lpFees: r.lpFees.toString(),
       protocolFees: r.protocolFees.toString(),
-      swapCount: r.swapCount,
       longCount: r.longCount,
       shortCount: r.shortCount,
       closeCount: r.closeCount,
+      totalPayout: r.totalPayout.toString(),
     })),
   });
 });
 
-// ── Protocol-wide metrics ────────────────────────────────────────────────────
+// ── Protocol-wide metrics ───────────────────────────────────────────────────
 
 app.get("/metrics/protocol", async (c) => {
   const rows = await db
@@ -106,35 +211,31 @@ app.get("/metrics/protocol", async (c) => {
 
   if (rows.length === 0) {
     return c.json({
-      totalSwapVolume: "0",
       totalPositionVolume: "0",
-      totalVolume: "0",
       totalFees: "0",
       totalLpFees: "0",
       totalProtocolFees: "0",
-      totalSwaps: 0,
       totalPositions: 0,
       totalCloses: 0,
+      totalPayout: "0",
       poolCount: 0,
     });
   }
 
   const r = rows[0];
   return c.json({
-    totalSwapVolume: r.totalSwapVolume.toString(),
     totalPositionVolume: r.totalPositionVolume.toString(),
-    totalVolume: (r.totalSwapVolume + r.totalPositionVolume).toString(),
     totalFees: r.totalFees.toString(),
     totalLpFees: r.totalLpFees.toString(),
     totalProtocolFees: r.totalProtocolFees.toString(),
-    totalSwaps: r.totalSwaps,
     totalPositions: r.totalPositions,
     totalCloses: r.totalCloses,
+    totalPayout: r.totalPayout.toString(),
     poolCount: r.poolCount,
   });
 });
 
-// ── User stats ───────────────────────────────────────────────────────────────
+// ── User stats (aggregate) ──────────────────────────────────────────────────
 
 app.get("/metrics/users", async (c) => {
   const allUsers = await db.select().from(userActivity);
@@ -149,6 +250,7 @@ app.get("/metrics/users", async (c) => {
 
   const totalVolume = allUsers.reduce((sum, u) => sum + u.totalVolume, 0n);
   const totalFeesPaid = allUsers.reduce((sum, u) => sum + u.totalFeesPaid, 0n);
+  const totalPayout = allUsers.reduce((sum, u) => sum + u.totalPayout, 0n);
 
   return c.json({
     totalUsers: total,
@@ -156,10 +258,11 @@ app.get("/metrics/users", async (c) => {
     activeUsers7d: active7d,
     totalUserVolume: totalVolume.toString(),
     totalUserFeesPaid: totalFeesPaid.toString(),
+    totalUserPayout: totalPayout.toString(),
   });
 });
 
-// ── Single user stats ────────────────────────────────────────────────────────
+// ── Single user stats ───────────────────────────────────────────────────────
 
 app.get("/metrics/user/:address", async (c) => {
   const addr = c.req.param("address")?.toLowerCase() as `0x${string}`;
@@ -177,20 +280,20 @@ app.get("/metrics/user/:address", async (c) => {
     address: r.address,
     firstSeen: Number(r.firstSeen),
     lastSeen: Number(r.lastSeen),
-    swapCount: r.swapCount,
     longCount: r.longCount,
     shortCount: r.shortCount,
+    closeCount: r.closeCount,
     totalVolume: r.totalVolume.toString(),
     totalFeesPaid: r.totalFeesPaid.toString(),
+    totalPayout: r.totalPayout.toString(),
   });
 });
 
-// ── Daily metrics (for charts) ───────────────────────────────────────────────
+// ── Daily metrics (per pool) ────────────────────────────────────────────────
 
 app.get("/metrics/daily/:pool", async (c) => {
   const pool = c.req.param("pool")?.toLowerCase() as `0x${string}`;
   const days = Math.min(Number(c.req.query("days") ?? 30), 365);
-  const since = BigInt(Math.floor(Date.now() / 1000)) - BigInt(days) * 86400n;
 
   const rows = await db
     .select()
@@ -207,14 +310,15 @@ app.get("/metrics/daily/:pool", async (c) => {
       date: Number(r.dayTimestamp),
       volume: r.volume.toString(),
       fees: r.fees.toString(),
-      swaps: r.swapCount,
       positions: r.positionCount,
+      closes: r.closeCount,
       users: r.uniqueUsers,
     })),
   });
 });
 
-// Global daily
+// ── Daily metrics (global) ──────────────────────────────────────────────────
+
 app.get("/metrics/daily", async (c) => {
   const days = Math.min(Number(c.req.query("days") ?? 30), 365);
 
@@ -232,14 +336,14 @@ app.get("/metrics/daily", async (c) => {
       date: Number(r.dayTimestamp),
       volume: r.volume.toString(),
       fees: r.fees.toString(),
-      swaps: r.swapCount,
       positions: r.positionCount,
+      closes: r.closeCount,
       users: r.uniqueUsers,
     })),
   });
 });
 
-// ── LP APR ───────────────────────────────────────────────────────────────────
+// ── LP APR ──────────────────────────────────────────────────────────────────
 
 app.get("/metrics/apr/:pool", async (c) => {
   const pool = c.req.param("pool")?.toLowerCase() as `0x${string}`;
@@ -261,13 +365,10 @@ app.get("/metrics/apr/:pool", async (c) => {
       .select()
       .from(dailyMetrics)
       .where(
-        and(eq(dailyMetrics.pool, pool), gte(dailyMetrics.dayTimestamp, sinceDay))
+        and(eq(dailyMetrics.pool, pool), gte(dailyMetrics.dayTimestamp, sinceDay)),
       );
 
-    const feeRevenue = dailyRows.reduce(
-      (sum, r) => sum + r.lpFees + r.swapFees,
-      0n
-    );
+    const feeRevenue = dailyRows.reduce((sum, r) => sum + r.lpFees, 0n);
 
     const snapshots = await db
       .select({
@@ -277,7 +378,7 @@ app.get("/metrics/apr/:pool", async (c) => {
       })
       .from(priceSnapshot)
       .where(
-        and(eq(priceSnapshot.pool, pool), gte(priceSnapshot.timestamp, since))
+        and(eq(priceSnapshot.pool, pool), gte(priceSnapshot.timestamp, since)),
       );
 
     let tvlSum = 0n;
@@ -305,7 +406,7 @@ app.get("/metrics/apr/:pool", async (c) => {
   return c.json({ pool, ...apr });
 });
 
-// ── Status ───────────────────────────────────────────────────────────────────
+// ── Status ──────────────────────────────────────────────────────────────────
 
 app.get("/api-status", (c) => c.json({ status: "ok" }));
 
