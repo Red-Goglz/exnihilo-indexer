@@ -14,8 +14,8 @@ import { lpNftAbi } from "../LpNFT.js";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-const POSITION_NFT = "0x9B3CE8FAF33ca6AAF998178344482d9d2ec4052E" as const;
-const LP_NFT = "0xF80CC21C7efed26D8f4f3195B70a9c13e74Cab7D" as const;
+const POSITION_NFT = "0x6818a4c71E8271CFD765900F10A24a46aF7fB88a" as const;
+const LP_NFT = "0x770960d23C6fa38dA748AFcDbE1865CEC4f74C9d" as const;
 
 const PROTOCOL_FEE_BPS = 200n;
 const LP_FEE_BPS = 300n;
